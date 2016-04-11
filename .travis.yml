@@ -1,0 +1,59 @@
+sudo: required
+dist: trusty
+language: ruby
+
+before_install:
+- gem install asciidoctor -v 1.5.2 
+- gem install tilt
+- sudo pip install git+https://github.com/rdhyee/ebooklib.git
+script:
+- VERSION=`ruby -e "require 'yaml'; meta = YAML.load_file('metadata.yaml'); puts meta['_version'];"`
+- git clone https://github.com/gitenberg-dev/asciidoctor-htmlbook.git
+
+- sudo pip install -r asciidoctor-htmlbook/gitberg-machine/requirements.txt
+- asciidoctor -a toc,idprefix=xx_,version=$VERSION -b xhtml5 -T ./asciidoctor-htmlbook/htmlbook-autogen/
+  -d book book.asciidoc -o book.html
+- git clone https://github.com/gitenberg-dev/HTMLBook
+
+# make book.html available to jinja2 environment by putting it into templates
+- cp book.html asciidoctor-htmlbook/gitberg-machine/templates/
+
+- /usr/bin/python asciidoctor-htmlbook/gitberg-machine/machine.py -o . -m metadata.yaml book.html
+- xsltproc -stringparam external.assets.list " " ./HTMLBook/htmlbook-xsl/epub.xsl book.html
+- cp ./HTMLBook/stylesheets/epub/epub.css OEBPS
+- if [ -e cover.jpg ]; then cp cover.jpg OEBPS/cover.jpg; fi
+# look for first images directory and one found, copy over to ./OEBPS
+- find . -name images -type d | head -n 1 | xargs -I {} mv {} ./OEBPS/
+- zip -rX book.epub mimetype
+- zip -rX book.epub OEBPS/ META-INF/
+- if test -d "OEBPS/images/"; then zip -rX book.epub OEBPS/images/ ;fi
+- mv book.epub The-Moonstone.epub
+- ebook-convert The-Moonstone.epub The-Moonstone.mobi
+- xvfb-run ebook-convert The-Moonstone.epub The-Moonstone.pdf
+branches:
+  only:
+  - master
+notifications:
+  webhooks:
+    urls:
+      - https://unglue.it/api/travisci/webhook
+    on_success: always
+    on_failure: never
+    on_start: never
+deploy:
+  skip_cleanup: true
+  provider: releases
+  api_key:
+    secure: am2drQbiv+BFIwAPA6a0MNpiwDZwflKeftKxri5SxaWBunAXMZv6nAM2iM3/N9a2xeo4cBNPcimNmxFWtk13MTy4/p5er/hRSdH/axjFUIAtSNdCZaYugcxmh2RsqNw4dURmoLAExugqYeWaVEaAkledU0I0uN/xrMkpQ7yQY92udiwE2M/HhtQJzCnQUOtw7EG73jTEf3EaKZQ+CCgg47W2udvILZyB4bIDnivAZIJgzRu/fyzPAhU1Z+kxNKOun9iwYT7rJc3sEnO51GJy+V3o4pfffj7iB/sQFqxmyEq8vb0mcDr6rGe0fwML8UFy/TSF1dJU1Ve+aon0jeK8uheooKnnOiXhEzaYC7G8EBOoLNWDgRTHzcBx6di1EAY9sB5VpiZUZy2WLTKXhfDH3Hn79mH5tEiH9y5N2Q50awJxeiHyOkm5Tktf2OkXfPT5Ci+Q33gw9qdfNAnWg756fnKKTYXaFDXrqjMczTxLxaJ/53S3t+AXEuy71ges838/0RAOZTxEz9Dh68Q7gP73y+9bYe4vY1T8WsJTShstz0YMeVn7RsPArohaAq3sAt+QJzf3np6y7GOzvh98+gtkd250mPW4QaEpl17bF01Vd6ND5Nra9QGvNq8cyjaPaB2vksMhNTphDitjbqKzmt0O0nYkZ6VhXMAb8RiKpszlZn8=
+  file:
+    - The-Moonstone.epub
+    - The-Moonstone.mobi
+    - The-Moonstone.pdf
+  "on":
+    repo: GITenberg/The-Moonstone_155
+addons:
+  apt:
+    packages:
+    - xsltproc
+    - xvfb
+    - calibre
